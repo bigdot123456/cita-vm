@@ -1,4 +1,5 @@
 use super::account::StateObject;
+use super::errors::Error;
 use super::object_entry::{ObjectStatus, StateObjectEntry};
 use cita_trie::codec::RLPNodeCodec;
 use cita_trie::db::DB;
@@ -8,7 +9,6 @@ use ethereum_types::{Address, H256, U256};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
-use super::errors::Error;
 
 pub struct State<B> {
     pub db: B,
@@ -35,7 +35,7 @@ impl<B: DB> State<B> {
     /// Creates new state with existing state root
     pub fn from_existing(db: B, root: H256) -> Result<State<B>, Error> {
         if !db.contains(&root.0[..]).or(Err(Error::InvalidStateRoot))? {
-            return Err(Error::InvalidStateRoot)
+            return Err(Error::InvalidStateRoot);
         }
         Ok(State {
             db: db,
@@ -49,10 +49,7 @@ impl<B: DB> State<B> {
     pub fn new_contract(&mut self, contract: &Address, balance: U256, nonce: U256) {
         self.insert_cache(
             contract,
-            StateObjectEntry::new_dirty(Some(StateObject::new(
-                balance,
-                nonce,
-            ))),
+            StateObjectEntry::new_dirty(Some(StateObject::new(balance, nonce))),
         );
     }
 
@@ -82,16 +79,13 @@ impl<B: DB> State<B> {
             }
         }
 
-        let trie =
-            PatriciaTrie::from(&mut self.db, RLPNodeCodec::default(), &self.root.0).unwrap();
+        let trie = PatriciaTrie::from(&mut self.db, RLPNodeCodec::default(), &self.root.0).unwrap();
         match trie.get(&address) {
             Ok(Some(rlp)) => {
                 let state_object = StateObject::from_rlp(&rlp);
                 self.insert_cache(
                     address,
-                    StateObjectEntry::new_clean(Some(
-                        state_object.clone_clean(),
-                    )),
+                    StateObjectEntry::new_clean(Some(state_object.clone_clean())),
                 );
                 return Some(state_object);
             }
@@ -109,17 +103,13 @@ impl<B: DB> State<B> {
         if self.storage_at(address, &key) != Some(value) {
             let contain_key = self.cache.borrow().contains_key(address);
             if !contain_key {
-                let trie =
-                    PatriciaTrie::from(&mut self.db, RLPNodeCodec::default(), &self.root.0)
-                        .unwrap();
+                let trie = PatriciaTrie::from(&mut self.db, RLPNodeCodec::default(), &self.root.0)
+                    .unwrap();
                 match trie.get(&address) {
                     Ok(rlp) => {
                         let mut state_object = StateObject::from_rlp(&rlp.unwrap());
                         state_object.set_storage(key, value);
-                        self.insert_cache(
-                            address,
-                            StateObjectEntry::new_dirty(Some(state_object)),
-                        );
+                        self.insert_cache(address, StateObjectEntry::new_dirty(Some(state_object)));
                     }
                     Err(_) => panic!("this state object  is not exist in patriciaTrie."),
                 }
@@ -140,10 +130,9 @@ impl<B: DB> State<B> {
 
     pub fn insert_cache(&self, address: &Address, state_object_entry: StateObjectEntry) {
         let is_dirty = state_object_entry.is_dirty();
-        self.cache.borrow_mut().insert(
-            *address,
-            state_object_entry.clone_dirty(),
-        );
+        self.cache
+            .borrow_mut()
+            .insert(*address, state_object_entry.clone_dirty());
 
         if is_dirty {
             if let Some(checkpoint) = self.checkpoints.borrow_mut().last_mut() {
@@ -183,7 +172,8 @@ impl<B: DB> State<B> {
             entry.status = ObjectStatus::Committed;
             match entry.state_object {
                 Some(ref mut state_object) => {
-                    trie.insert(address, &rlp::encode(&state_object.account())).unwrap();
+                    trie.insert(address, &rlp::encode(&state_object.account()))
+                        .unwrap();
                 }
                 None => {
                     trie.remove(address).unwrap();
@@ -315,10 +305,7 @@ impl<B: DB> StateObjectInfo for State<B> {
         match self.get_state_object(a) {
             Some(mut state_object) => {
                 state_object.init_code(code.clone());
-                self.insert_cache(
-                    a,
-                    StateObjectEntry::new_dirty(Some(state_object)),
-                )
+                self.insert_cache(a, StateObjectEntry::new_dirty(Some(state_object)))
             }
             None => {
                 self.new_contract(a, U256::from(0), U256::from(0));
@@ -345,10 +332,7 @@ impl<B: DB> StateObjectInfo for State<B> {
             // incr < 0 ?
             let mut state_object = self.get_state_object(a).unwrap();
             state_object.add_balance(incr);
-            self.insert_cache(
-                a,
-                StateObjectEntry::new_dirty(Some(state_object)),
-            );
+            self.insert_cache(a, StateObjectEntry::new_dirty(Some(state_object)));
         }
     }
 
@@ -357,10 +341,7 @@ impl<B: DB> StateObjectInfo for State<B> {
             // incr < 0 ?
             let mut state_object = self.get_state_object(a).unwrap();
             state_object.sub_balance(decr);
-            self.insert_cache(
-                a,
-                StateObjectEntry::new_dirty(Some(state_object)),
-            );
+            self.insert_cache(a, StateObjectEntry::new_dirty(Some(state_object)));
         }
     }
 
@@ -372,10 +353,7 @@ impl<B: DB> StateObjectInfo for State<B> {
     fn inc_nonce(&mut self, a: &Address) {
         if let Some(mut state_object) = self.get_state_object(a) {
             state_object.inc_nonce();
-            self.insert_cache(
-                a,
-                StateObjectEntry::new_dirty(Some(state_object)),
-            );
+            self.insert_cache(a, StateObjectEntry::new_dirty(Some(state_object)));
         }
     }
 
@@ -383,10 +361,7 @@ impl<B: DB> StateObjectInfo for State<B> {
         match self.get_state_object(address) {
             Some(mut state_object) => {
                 state_object.add_balance(U256::from(n));
-                self.insert_cache(
-                    address,
-                    StateObjectEntry::new_dirty(Some(state_object)),
-                )
+                self.insert_cache(address, StateObjectEntry::new_dirty(Some(state_object)))
             }
             None => {
                 self.new_contract(address, U256::from(n), U256::from(0));
@@ -403,10 +378,7 @@ impl<B: DB> StateObjectInfo for State<B> {
         match self.get_state_object(address) {
             Some(mut state_object) => {
                 state_object.sub_balance(U256::from(n));
-                self.insert_cache(
-                    address,
-                    StateObjectEntry::new_dirty(Some(state_object)),
-                )
+                self.insert_cache(address, StateObjectEntry::new_dirty(Some(state_object)))
             }
             None => {
                 self.new_contract(address, U256::from(n), U256::from(0));

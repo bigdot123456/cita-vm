@@ -2,8 +2,17 @@ use cita_trie::codec::RLPNodeCodec;
 use cita_trie::db::DB;
 use cita_trie::trie::{PatriciaTrie, Trie};
 use ethereum_types::{H256, U256};
-use keccak_hash::{keccak, KECCAK_EMPTY, KECCAK_NULL_RLP};
+use sha3::{Digest, Sha3_256};
 use std::collections::HashMap;
+
+pub const SHA3_EMPTY: H256 = H256([
+    167, 255, 198, 248, 191, 30, 215, 102, 81, 193, 71, 86, 160, 97, 214, 98, 245, 128, 255, 77,
+    228, 59, 73, 250, 130, 216, 10, 75, 128, 248, 67, 74,
+]);
+pub const SHA3_NULL_RLP: H256 = H256([
+    188, 32, 113, 164, 222, 132, 111, 40, 87, 2, 68, 127, 37, 137, 221, 22, 54, 120, 224, 151, 42,
+    138, 27, 13, 40, 176, 78, 213, 192, 148, 84, 127,
+]);
 
 #[derive(Debug)]
 pub struct Account {
@@ -52,7 +61,6 @@ pub struct StateObject {
     storage_changes: HashMap<H256, H256>,
 }
 
-
 impl From<Account> for StateObject {
     fn from(account: Account) -> Self {
         StateObject {
@@ -68,9 +76,7 @@ impl From<Account> for StateObject {
     }
 }
 
-
 impl StateObject {
-
     /// Create a new account.
     /// NOTE: If contract account generated, make sure you use `init_code` on
     /// this before `commit`ing.
@@ -78,8 +84,8 @@ impl StateObject {
         StateObject {
             balance: balance,
             nonce: nonce,
-            storage_root: KECCAK_NULL_RLP,
-            code_hash: KECCAK_EMPTY,
+            storage_root: SHA3_NULL_RLP,
+            code_hash: SHA3_EMPTY,
             code: vec![],
             code_size: 0,
             code_state: CodeState::Clean,
@@ -105,20 +111,19 @@ impl StateObject {
 
     pub fn init_code(&mut self, code: Vec<u8>) {
         self.code = code.clone();
-        self.code_hash = keccak(&code);
+        self.code_hash = From::from(&Sha3_256::digest(&code)[..]);
         self.code_size = code.len();
         self.code_state = CodeState::Dirty;
     }
 
-
     pub fn read_code<B: DB>(&mut self, db: &mut B) -> Vec<u8> {
-        if self.code_hash == KECCAK_EMPTY {
-            return vec![]
+        if self.code_hash == SHA3_EMPTY {
+            return vec![];
         }
         if !self.code.is_empty() {
-            return self.code.clone()
+            return self.code.clone();
         }
-        return db.get(&self.code_hash).unwrap().unwrap()
+        return db.get(&self.code_hash).unwrap().unwrap();
     }
 
     pub fn balance(&self) -> U256 {
@@ -166,12 +171,12 @@ impl StateObject {
 
     pub fn get_storage_at_backend<B: DB>(&mut self, db: &mut B, key: &H256) -> Option<H256> {
         let trie = PatriciaTrie::from(db, RLPNodeCodec::default(), &self.storage_root.0).unwrap();
-        if let Ok(a) =  trie.get(key) {
+        if let Ok(a) = trie.get(key) {
             if let Some(b) = a {
-                return Some( From::from(&b[..]) )
+                return Some(From::from(&b[..]));
             }
         }
-        return None
+        return None;
     }
 
     pub fn get_storage_at_changes(&self, key: &H256) -> Option<H256> {
@@ -192,7 +197,8 @@ impl StateObject {
     }
 
     pub fn commit_storage<B: DB>(&mut self, db: &mut B) {
-        let mut trie = PatriciaTrie::from(db, RLPNodeCodec::default(), &self.storage_root.0).unwrap();
+        let mut trie =
+            PatriciaTrie::from(db, RLPNodeCodec::default(), &self.storage_root.0).unwrap();
         for (k, v) in self.storage_changes.drain() {
             if v.is_zero() {
                 trie.remove(&k).unwrap();
@@ -202,7 +208,7 @@ impl StateObject {
         }
     }
 
-    pub fn commit_code<B: DB>(&mut self, db: &mut B){
+    pub fn commit_code<B: DB>(&mut self, db: &mut B) {
         match (self.code_state == CodeState::Dirty, self.code.is_empty()) {
             (true, true) => {
                 self.code_size = 0;

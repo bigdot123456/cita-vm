@@ -33,7 +33,7 @@ impl StateObjectEntry {
     }
 
     /// Clone dirty data into new `ObjectEntry`. This includes
-	/// account data and modified storage keys.
+    /// account data and modified storage keys.
     pub fn clone_dirty(&self) -> StateObjectEntry {
         StateObjectEntry {
             state_object: self.state_object.as_ref().map(StateObject::clone_dirty),
