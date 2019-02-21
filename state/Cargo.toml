@@ -12,7 +12,6 @@ lru-cache = "0.1.1"
 ethereum-types = "0.4"
 evm = { path="../evm" }
 bytes = "0.4.11"
-keccak-hash = "0.1"
 cita_trie = { git = "https://github.com/cryptape/cita-trie.git", branch = "master" }
 
 [build-dependencies]
